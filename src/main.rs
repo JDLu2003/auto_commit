@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use atty::Stream;
 use clap::Parser;
 use colored::*;
 use dialoguer::{theme::ColorfulTheme, Select};
@@ -6,7 +7,6 @@ use git2::Repository;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
-use atty::Stream;
 
 /// A CLI tool to generate commit messages using AI.
 #[derive(Parser, Debug)]
@@ -93,7 +93,7 @@ fn main() -> Result<()> {
             }
             3 => {
                 println!("{}", "❌ 操作已取消，未提交任何变更".red());
-                return Ok(())
+                return Ok(());
             }
             _ => unreachable!(),
         }
@@ -102,8 +102,11 @@ fn main() -> Result<()> {
 
 fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
     if dry_run {
-        println!("{}", "Dry run: Commit message generated but not committed.".yellow());
-        return Ok(())
+        println!(
+            "{}",
+            "Dry run: Commit message generated but not committed.".yellow()
+        );
+        return Ok(());
     }
 
     let mut file = NamedTempFile::new()?;
@@ -120,14 +123,17 @@ fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
         let stdout = String::from_utf8_lossy(&output.stdout);
         // A more robust way to get the commit hash
         if let Some(line) = stdout.lines().next() {
-             if let Some(hash) = line.split(|c| c == '[' || c == ']').nth(1).and_then(|s| s.split_whitespace().last()) {
+            if let Some(hash) = line
+                .split(|c| c == '[' || c == ']')
+                .nth(1)
+                .and_then(|s| s.split_whitespace().last())
+            {
                 println!("✅ Commit 已提交: {}", hash.green());
                 return Ok(());
-             }
+            }
         }
         // Fallback for unexpected output
         println!("✅ Commit 已提交");
-
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         eprintln!("{} git commit 执行失败", "Error:".red());
@@ -147,9 +153,7 @@ fn edit_message(message: &str, editor: &Option<String>) -> Result<String> {
     file.write_all(message.as_bytes())?;
     let path = file.path();
 
-    let status = Command::new(editor_cmd)
-        .arg(path)
-        .status()?;
+    let status = Command::new(editor_cmd).arg(path).status()?;
 
     if !status.success() {
         return Err(anyhow!("Editor exited with a non-zero status."));
@@ -162,7 +166,6 @@ fn edit_message(message: &str, editor: &Option<String>) -> Result<String> {
 
     Ok(new_message.trim().to_string())
 }
-
 
 /// Calls the Python script to generate a commit message.
 fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> Result<String> {
@@ -180,7 +183,7 @@ fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> 
     }
 
     let mut child = Command::new("python3")
-        .arg("ask.py")
+        .arg("/Users/jdlu/Project/auto_aommit/ask.py")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -214,7 +217,6 @@ fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> 
     Ok(generated_text)
 }
 
-
 /// Check if the current directory is a Git repository.
 fn check_git_repository() -> Result<Repository> {
     Repository::open(".").context("Error: Current directory is not a Git repository.")
@@ -227,7 +229,7 @@ fn get_staged_diff(repo: &Repository) -> Result<String> {
         Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
         Err(e) => return Err(e.into()),
     };
-    
+
     let head_tree = head.as_ref().and_then(|h| h.peel_to_tree().ok());
 
     let diff = repo.diff_tree_to_index(head_tree.as_ref(), None, None)?;
@@ -249,3 +251,4 @@ fn get_staged_diff(repo: &Repository) -> Result<String> {
         Ok(diff_text)
     }
 }
+
