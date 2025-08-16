@@ -9,6 +9,7 @@ use std::process::Command;
 use tempfile::NamedTempFile;
 
 mod llm;
+mod prompt;
 
 /// A CLI tool to generate commit messages using AI.
 #[derive(Parser, Debug)]
@@ -33,11 +34,20 @@ struct Args {
     /// Show debug information
     #[arg(long)]
     debug: bool,
+
+    /// Use JSON mode for structured LLM output
+    #[arg(long)]
+    json: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+    let prompt_mode = if args.json {
+        prompt::PromptMode::Json
+    } else {
+        prompt::PromptMode::Simple
+    };
 
     let repo = check_git_repository()?;
     let diff = get_staged_diff(&repo)?;
@@ -49,7 +59,8 @@ async fn main() -> Result<()> {
     println!("{}", "正在分析已暂存的变更...".yellow());
 
     let mut current_prompt = args.prompt.clone();
-    let mut commit_msg = generate_commit_message(&diff, &current_prompt, args.debug).await?;
+    let mut commit_msg =
+        generate_commit_message(&diff, &prompt_mode, &current_prompt, args.debug).await?;
 
     if args.yes || !atty::is(Stream::Stdin) {
         println!("{}", "已生成 Commit Message:".green());
@@ -89,7 +100,9 @@ async fn main() -> Result<()> {
                 std::io::stdin().read_line(&mut new_prompt)?;
                 current_prompt = Some(new_prompt.trim().to_string());
                 println!("{}", "正在重新生成...".yellow());
-                commit_msg = generate_commit_message(&diff, &current_prompt, args.debug).await?;
+                commit_msg =
+                    generate_commit_message(&diff, &prompt_mode, &current_prompt, args.debug)
+                        .await?;
             }
             2 => {
                 return commit(&repo, &commit_msg, args.dry_run);
@@ -170,28 +183,27 @@ fn edit_message(message: &str, editor: &Option<String>) -> Result<String> {
     Ok(new_message.trim().to_string())
 }
 
-/// Calls the LLM API to generate a commit message.
-async fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> Result<String> {
-    let mut full_prompt = format!(
-        "Based on the following git diff, generate a concise and descriptive commit message in Chinese, following the Conventional Commits specification. The output should be only the commit message (title and body), without any extra text or explanation.\n\nDiff:\n```\n{}\n```",
-        diff
-    );
-
-    if let Some(p) = prompt.as_deref().filter(|s| !s.is_empty()) {
-        full_prompt.push_str(&format!("\n\nAdditional instructions: {}", p));
-    }
+/// Calls the LLM API to generate a commit message using a selected strategy.
+async fn generate_commit_message(
+    diff: &str,
+    prompt_mode: &prompt::PromptMode,
+    user_prompt: &Option<String>,
+    debug: bool,
+) -> Result<String> {
+    let strategy = prompt_mode.get_strategy();
+    let full_prompt = strategy.build_prompt(diff, user_prompt);
 
     if debug {
         println!("[DEBUG] LLM input:\n{}", full_prompt);
     }
 
-    let generated_text = llm::call_llm_api(&full_prompt).await?;
+    let llm_response = llm::call_llm_api(&full_prompt).await?;
 
     if debug {
-        println!("[DEBUG] LLM output:\n{}", generated_text);
+        println!("[DEBUG] LLM output:\n{}", llm_response);
     }
 
-    Ok(generated_text.trim().to_string())
+    strategy.parse_response(&llm_response)
 }
 
 /// Check if the current directory is a Git repository.
@@ -228,4 +240,3 @@ fn get_staged_diff(repo: &Repository) -> Result<String> {
         Ok(diff_text)
     }
 }
-
