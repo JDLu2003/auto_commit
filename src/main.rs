@@ -5,8 +5,10 @@ use colored::*;
 use dialoguer::{theme::ColorfulTheme, Select};
 use git2::Repository;
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::NamedTempFile;
+
+mod llm;
 
 /// A CLI tool to generate commit messages using AI.
 #[derive(Parser, Debug)]
@@ -33,7 +35,8 @@ struct Args {
     debug: bool,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     let repo = check_git_repository()?;
@@ -46,7 +49,7 @@ fn main() -> Result<()> {
     println!("{}", "正在分析已暂存的变更...".yellow());
 
     let mut current_prompt = args.prompt.clone();
-    let mut commit_msg = generate_commit_message(&diff, &current_prompt, args.debug)?;
+    let mut commit_msg = generate_commit_message(&diff, &current_prompt, args.debug).await?;
 
     if args.yes || !atty::is(Stream::Stdin) {
         println!("{}", "已生成 Commit Message:".green());
@@ -86,14 +89,14 @@ fn main() -> Result<()> {
                 std::io::stdin().read_line(&mut new_prompt)?;
                 current_prompt = Some(new_prompt.trim().to_string());
                 println!("{}", "正在重新生成...".yellow());
-                commit_msg = generate_commit_message(&diff, &current_prompt, args.debug)?;
+                commit_msg = generate_commit_message(&diff, &current_prompt, args.debug).await?;
             }
             2 => {
                 return commit(&repo, &commit_msg, args.dry_run);
             }
             3 => {
                 println!("{}", "❌ 操作已取消，未提交任何变更".red());
-                return Ok(());
+                return Ok(())
             }
             _ => unreachable!(),
         }
@@ -106,7 +109,7 @@ fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
             "{}",
             "Dry run: Commit message generated but not committed.".yellow()
         );
-        return Ok(());
+        return Ok(())
     }
 
     let mut file = NamedTempFile::new()?;
@@ -129,7 +132,7 @@ fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
                 .and_then(|s| s.split_whitespace().last())
             {
                 println!("✅ Commit 已提交: {}", hash.green());
-                return Ok(());
+                return Ok(())
             }
         }
         // Fallback for unexpected output
@@ -167,8 +170,8 @@ fn edit_message(message: &str, editor: &Option<String>) -> Result<String> {
     Ok(new_message.trim().to_string())
 }
 
-/// Calls the Python script to generate a commit message.
-fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> Result<String> {
+/// Calls the LLM API to generate a commit message.
+async fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> Result<String> {
     let mut full_prompt = format!(
         "Based on the following git diff, generate a concise and descriptive commit message in Chinese, following the Conventional Commits specification. The output should be only the commit message (title and body), without any extra text or explanation.\n\nDiff:\n```\n{}\n```",
         diff
@@ -179,42 +182,16 @@ fn generate_commit_message(diff: &str, prompt: &Option<String>, debug: bool) -> 
     }
 
     if debug {
-        println!("[DEBUG] Python input:\n{}", full_prompt);
+        println!("[DEBUG] LLM input:\n{}", full_prompt);
     }
 
-    let mut child = Command::new("python3")
-        .arg("/Users/jdlu/Project/auto_aommit/ask.py")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    let mut stdin = child.stdin.take().unwrap();
-    stdin
-        .write_all(full_prompt.as_bytes())
-        .context("Failed to write to Python script stdin")?;
-    drop(stdin); // Close stdin to signal EOF
-
-    let output = child.wait_with_output()?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!(
-            "{} {}
-{}",
-            "Error:".red(),
-            "Failed to generate commit message.",
-            stderr
-        ));
-    }
-
-    let generated_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let generated_text = llm::call_llm_api(&full_prompt).await?;
 
     if debug {
-        println!("[DEBUG] Python output:\n{}", generated_text);
+        println!("[DEBUG] LLM output:\n{}", generated_text);
     }
 
-    Ok(generated_text)
+    Ok(generated_text.trim().to_string())
 }
 
 /// Check if the current directory is a Git repository.
