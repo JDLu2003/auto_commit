@@ -14,7 +14,7 @@
 1.  **Prerequisites**:
     *   Rust toolchain (install from [rust-lang.org](https://www.rust-lang.org/tools/install))
     *   Python 3
-    *   An API key for the language model (set as `QWENKEY` environment variable)
+    *   An API key for the DeepSeek API (set as `DEEPSEEK_API_KEY` environment variable)
 
 2.  **Build from source**:
     ```bash

@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Context, Result};
-use colored::*;use reqwest::Client;use serde::{Deserialize, Serialize};use std::env;
+use colored::*;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::env;
 
 #[derive(Serialize, Debug)]
 struct RequestBody {
@@ -30,12 +33,13 @@ struct ResponseMessage {
 }
 
 pub async fn call_llm_api(prompt: &str) -> Result<String> {
-    let api_key = env::var("QWENKEY").context("Error: QWENKEY environment variable not set.")?;
+    let api_key = env::var("DEEPSEEK_API_KEY")
+        .context("Error: DEEPSEEK_API_KEY environment variable not set.")?;
     let client = Client::new();
 
     let request_body = RequestBody {
         stream: false,
-        model: "deepseek-v3".to_string(),
+        model: "deepseek-v4-flash".to_string(),
         messages: vec![
             Message {
                 role: "system".to_string(),
@@ -49,7 +53,7 @@ pub async fn call_llm_api(prompt: &str) -> Result<String> {
     };
 
     let response = client
-        .post("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
+        .post("https://api.deepseek.com/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&request_body)

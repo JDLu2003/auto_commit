@@ -9,12 +9,12 @@ import ollama
 def call_remote_api(prompt):
     """Sends a prompt to the DashScope API and handles the streaming response."""
     headers = {
-        "Authorization": f"Bearer {os.environ.get('QWENKEY')}",
+        "Authorization": f"Bearer {os.environ.get('DEEPSEEK_API_KEY')}",
         "Content-Type": "application/json"
     }
     json_data = {
         "stream": False,  # For scoring, we don't need to stream
-        "model": "deepseek-v3",
+        "model": "deepseek-v4-pro",
         "messages": [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt}
@@ -22,7 +22,7 @@ def call_remote_api(prompt):
     }
     try:
         response = requests.post(
-            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            "https://api.deepseek.com/chat/completions",
             headers=headers,
             json=json_data
         )
