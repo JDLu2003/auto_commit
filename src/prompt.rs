@@ -1,3 +1,5 @@
+use crate::llm::Message;
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
@@ -10,10 +12,8 @@ struct CommitMessageJson {
 
 /// A trait defining the interface for different prompt generation and parsing strategies.
 pub trait PromptStrategy {
-    /// Builds the full prompt to be sent to the LLM.
-    fn build_prompt(&self, diff: &str, user_prompt: &Option<String>) -> String;
+    fn build_messages(&self, diff: &str, user_prompt: &Option<String>) -> Vec<Message>;
 
-    /// Parses the raw response from the LLM into a formatted commit message string.
     fn parse_response(&self, response: &str) -> Result<String>;
 }
 
@@ -23,16 +23,27 @@ pub trait PromptStrategy {
 pub struct SimplePrompt;
 
 impl PromptStrategy for SimplePrompt {
-    fn build_prompt(&self, diff: &str, user_prompt: &Option<String>) -> String {
-        let mut full_prompt = format!(
-            "Based on the following git diff, generate a concise and descriptive commit message in Chinese, following the Conventional Commits specification. The output should be only the commit message (title and body), without any extra text or explanation.\n\nDiff:\n```\n{}\n```",
+    fn build_messages(&self, diff: &str, user_prompt: &Option<String>) -> Vec<Message> {
+        let system_msg = Message {
+            role: "system".to_string(),
+            content: "你是一个帮助生成 git commit message 的助手。请根据 git diff 生成简洁、符合 Conventional Commits 规范的中文 commit message。输出仅包含 commit message，不要有任何额外说明。".to_string(),
+        };
+
+        let mut user_content = format!(
+            "基于以下 git diff，生成符合 Conventional Commits 规范的中文 commit message（包括标题和正文），不要有任何额外说明。\n\nDiff:\n```\n{}\n```",
             diff
         );
 
         if let Some(p) = user_prompt.as_deref().filter(|s| !s.is_empty()) {
-            full_prompt.push_str(&format!("\n\nAdditional instructions: {}\n", p));
+            user_content.push_str(&format!("\n\n附加要求: {}", p));
         }
-        full_prompt
+
+        let user_msg = Message {
+            role: "user".to_string(),
+            content: user_content,
+        };
+
+        vec![system_msg, user_msg]
     }
 
     fn parse_response(&self, response: &str) -> Result<String> {
@@ -46,26 +57,30 @@ impl PromptStrategy for SimplePrompt {
 pub struct JsonPrompt;
 
 impl PromptStrategy for JsonPrompt {
-    fn build_prompt(&self, diff: &str, user_prompt: &Option<String>) -> String {
-        let mut full_prompt = format!(
-            "Based on the following git diff, generate a commit message in Chinese, 应当使用中文说明信息,不能使用 markdown 标记，不能使用符号\"`\"除了\"-\"用于分点作答
-                应当使用中文说明信息应当使用中文说明信息应当使用中文说明信息应当使用中文说明信息
-                following the Conventional Commits specification. 
-                Your output MUST be a valid JSON object with two keys: 
-                \"title\" (a string for the subject line) 
-                and \"body\" (a string for the detailed description). 
-                Do not include any other text or explanations outside of the JSON object.
-                \n\nExample format:\n{{\n  \"title\": \"feat: Implement user authentication\",\n  \"body\": \"- Add login and logout endpoints.\\n- Use JWT for session management.\"\n}}\n\nDiff:\n```\n{}\n```",
+    fn build_messages(&self, diff: &str, user_prompt: &Option<String>) -> Vec<Message> {
+        let system_msg = Message {
+            role: "system".to_string(),
+            content: "你是一个帮助生成 git commit message 的助手。请根据 git diff 生成符合 Conventional Commits 规范的中文 commit message。你必须输出有效的 JSON 格式，包含 \"title\" 和 \"body\" 两个字段。".to_string(),
+        };
+
+        let mut user_content = format!(
+            "基于以下 git diff，生成符合 Conventional Commits 规范的中文 commit message。\n应当使用中文说明信息，不能使用 markdown 标记，不能使用符号\"`\"除了\"-\"用于分点作答。\n必须使用中文说明信息。\n\n你的输出必须是有效的 JSON 对象，包含两个字段：\n\"title\"（标题行字符串）\n\"body\"（详细描述字符串）\n不要包含 JSON 之外的任何文字或解释。\n\n示例格式：\n{{\n  \"title\": \"feat: 实现用户认证功能\",\n  \"body\": \"- 添加登录和登出接口\\n- 使用 JWT 进行会话管理\"\n}}\n\nDiff:\n```\n{}\n```",
             diff
         );
 
         if let Some(p) = user_prompt.as_deref().filter(|s| !s.is_empty()) {
-            full_prompt.push_str(&format!(
-                "\n\nAdditional instructions for the content: {}\n",
+            user_content.push_str(&format!(
+                "\n\n内容附加要求: {}",
                 p
             ));
         }
-        full_prompt
+
+        let user_msg = Message {
+            role: "user".to_string(),
+            content: user_content,
+        };
+
+        vec![system_msg, user_msg]
     }
 
     fn parse_response(&self, response: &str) -> Result<String> {

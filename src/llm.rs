@@ -13,10 +13,10 @@ struct RequestBody {
     thinking: serde_json::Value,
 }
 
-#[derive(Serialize, Debug)]
-struct Message {
-    role: String,
-    content: String,
+#[derive(Serialize, Debug, Clone)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -34,7 +34,7 @@ struct ResponseMessage {
     content: String,
 }
 
-pub async fn call_llm_api(prompt: &str) -> Result<String> {
+pub async fn call_llm_api(messages: Vec<Message>) -> Result<String> {
     let api_key = env::var("DEEPSEEK_API_KEY")
         .context("Error: DEEPSEEK_API_KEY environment variable not set.")?;
     let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
@@ -42,16 +42,7 @@ pub async fn call_llm_api(prompt: &str) -> Result<String> {
     let request_body = RequestBody {
         stream: false,
         model: "deepseek-v4-flash".to_string(),
-        messages: vec![
-            Message {
-                role: "system".to_string(),
-                content: "You are a helpful assistant.".to_string(),
-            },
-            Message {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-            },
-        ],
+        messages,
         thinking: serde_json::json!({"type": "disabled"}),
     };
 

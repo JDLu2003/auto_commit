@@ -64,10 +64,17 @@ async fn main() -> Result<()> {
 
     println!("{}", "正在分析已暂存的变更...".yellow());
 
-    let mut current_prompt = args.prompt.clone();
+    let strategy = prompt_mode.get_strategy();
+    let current_prompt = args.prompt.clone();
+    let mut conversation = strategy.build_messages(&diff, &current_prompt);
+
     let t1 = Instant::now();
-    let mut commit_msg =
-        generate_commit_message(&diff, &prompt_mode, &current_prompt, args.debug).await?;
+    let (mut commit_msg, raw_response) =
+        generate_commit_message(conversation.clone(), &*strategy, args.debug).await?;
+    conversation.push(llm::Message {
+        role: "assistant".to_string(),
+        content: raw_response,
+    });
     if args.debug {
         println!("[TIMING] LLM API 调用: {:?}", t1.elapsed());
     }
@@ -112,11 +119,24 @@ async fn main() -> Result<()> {
                 println!("输入附加生成要求（直接回车跳过）：");
                 let mut new_prompt = String::new();
                 std::io::stdin().read_line(&mut new_prompt)?;
-                current_prompt = Some(new_prompt.trim().to_string());
+                let new_prompt = new_prompt.trim().to_string();
+                let regenerate_prompt = if new_prompt.is_empty() {
+                    "请重新生成 commit message，考虑之前的对话历史。".to_string()
+                } else {
+                    format!("请根据以下新增要求重新生成 commit message: {}", new_prompt)
+                };
+                conversation.push(llm::Message {
+                    role: "user".to_string(),
+                    content: regenerate_prompt,
+                });
                 println!("{}", "正在重新生成...".yellow());
-                commit_msg =
-                    generate_commit_message(&diff, &prompt_mode, &current_prompt, args.debug)
-                        .await?;
+                let (new_msg, new_raw) =
+                    generate_commit_message(conversation.clone(), &*strategy, args.debug).await?;
+                commit_msg = new_msg;
+                conversation.push(llm::Message {
+                    role: "assistant".to_string(),
+                    content: new_raw,
+                });
             }
             2 => {
                 return commit(&repo, &commit_msg, args.dry_run);
@@ -199,25 +219,22 @@ fn edit_message(message: &str, editor: &Option<String>) -> Result<String> {
 
 /// Calls the LLM API to generate a commit message using a selected strategy.
 async fn generate_commit_message(
-    diff: &str,
-    prompt_mode: &prompt::PromptMode,
-    user_prompt: &Option<String>,
+    messages: Vec<llm::Message>,
+    strategy: &dyn prompt::PromptStrategy,
     debug: bool,
-) -> Result<String> {
-    let strategy = prompt_mode.get_strategy();
-    let full_prompt = strategy.build_prompt(diff, user_prompt);
-
+) -> Result<(String, String)> {
     if debug {
-        println!("[DEBUG] LLM input:\n{}", full_prompt);
+        println!("[DEBUG] LLM input messages count: {}", messages.len());
     }
 
-    let llm_response = llm::call_llm_api(&full_prompt).await?;
+    let llm_response = llm::call_llm_api(messages).await?;
 
     if debug {
         println!("[DEBUG] LLM output:\n{}", llm_response);
     }
 
-    strategy.parse_response(&llm_response)
+    let commit_msg = strategy.parse_response(&llm_response)?;
+    Ok((commit_msg, llm_response))
 }
 
 /// Check if the current directory is a Git repository.
