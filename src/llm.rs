@@ -3,12 +3,14 @@ use colored::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::time::Duration;
 
 #[derive(Serialize, Debug)]
 struct RequestBody {
     stream: bool,
     model: String,
     messages: Vec<Message>,
+    thinking: serde_json::Value,
 }
 
 #[derive(Serialize, Debug)]
@@ -35,7 +37,9 @@ struct ResponseMessage {
 pub async fn call_llm_api(prompt: &str) -> Result<String> {
     let api_key = env::var("DEEPSEEK_API_KEY")
         .context("Error: DEEPSEEK_API_KEY environment variable not set.")?;
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
 
     let request_body = RequestBody {
         stream: false,
@@ -50,6 +54,7 @@ pub async fn call_llm_api(prompt: &str) -> Result<String> {
                 content: prompt.to_string(),
             },
         ],
+        thinking: serde_json::json!({"type": "disabled"}),
     };
 
     let response = client
@@ -76,7 +81,7 @@ pub async fn call_llm_api(prompt: &str) -> Result<String> {
         .await
         .context("Failed to parse JSON response from LLM API")?;
 
-    if let Some(choice) = response_body.choices.get(0) {
+    if let Some(choice) = response_body.choices.first() {
         Ok(choice.message.content.clone())
     } else {
         Err(anyhow!(

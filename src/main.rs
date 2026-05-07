@@ -6,6 +6,7 @@ use dialoguer::{theme::ColorfulTheme, Select};
 use git2::Repository;
 use std::io::{Read, Write};
 use std::process::Command;
+use std::time::Instant;
 use tempfile::NamedTempFile;
 
 mod llm;
@@ -42,6 +43,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let start = Instant::now();
     let args = Args::parse();
     let prompt_mode = if args.json {
         prompt::PromptMode::Json
@@ -49,8 +51,12 @@ async fn main() -> Result<()> {
         prompt::PromptMode::Simple
     };
 
+    let t0 = Instant::now();
     let repo = check_git_repository()?;
     let diff = get_staged_diff(&repo)?;
+    if args.debug {
+        println!("[TIMING] git 操作: {:?}", t0.elapsed());
+    }
 
     if args.debug {
         println!("[DEBUG] Staged diff:\n{}", diff);
@@ -59,8 +65,16 @@ async fn main() -> Result<()> {
     println!("{}", "正在分析已暂存的变更...".yellow());
 
     let mut current_prompt = args.prompt.clone();
+    let t1 = Instant::now();
     let mut commit_msg =
         generate_commit_message(&diff, &prompt_mode, &current_prompt, args.debug).await?;
+    if args.debug {
+        println!("[TIMING] LLM API 调用: {:?}", t1.elapsed());
+    }
+
+    if args.debug {
+        println!("[TIMING] 总用时: {:?}", start.elapsed());
+    }
 
     if args.yes || !atty::is(Stream::Stdin) {
         println!("{}", "已生成 Commit Message:".green());
@@ -140,7 +154,7 @@ fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
         // A more robust way to get the commit hash
         if let Some(line) = stdout.lines().next() {
             if let Some(hash) = line
-                .split(|c| c == '[' || c == ']')
+                .split(['[', ']'])
                 .nth(1)
                 .and_then(|s| s.split_whitespace().last())
             {
