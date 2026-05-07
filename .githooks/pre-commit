@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+echo "==> cargo fmt..."
+cargo fmt
+git add -u
+
+echo "==> cargo check..."
+cargo check
+
+echo "==> cargo clippy..."
+cargo clippy -- -D warnings
+
+echo "==> 全部通过"
