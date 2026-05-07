@@ -48,7 +48,14 @@ pub struct JsonPrompt;
 impl PromptStrategy for JsonPrompt {
     fn build_prompt(&self, diff: &str, user_prompt: &Option<String>) -> String {
         let mut full_prompt = format!(
-            "Based on the following git diff, generate a commit message in Chinese, 应当使用中文说明信息,following the Conventional Commits specification. Your output MUST be a valid JSON object with two keys: \"title\" (a string for the subject line) and \"body\" (a string for the detailed description). Do not include any other text or explanations outside of the JSON object.\n\nExample format:\n{{\n  \"title\": \"feat: Implement user authentication\",\n  \"body\": \"- Add login and logout endpoints.\\n- Use JWT for session management.\"\n}}\n\nDiff:\n```\n{}\n```",
+            "Based on the following git diff, generate a commit message in Chinese, 应当使用中文说明信息,不能使用 markdown 标记，不能使用符号\"`\"除了\"-\"用于分点作答
+                应当使用中文说明信息应当使用中文说明信息应当使用中文说明信息应当使用中文说明信息
+                following the Conventional Commits specification. 
+                Your output MUST be a valid JSON object with two keys: 
+                \"title\" (a string for the subject line) 
+                and \"body\" (a string for the detailed description). 
+                Do not include any other text or explanations outside of the JSON object.
+                \n\nExample format:\n{{\n  \"title\": \"feat: Implement user authentication\",\n  \"body\": \"- Add login and logout endpoints.\\n- Use JWT for session management.\"\n}}\n\nDiff:\n```\n{}\n```",
             diff
         );
 

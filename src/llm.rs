@@ -37,9 +37,7 @@ struct ResponseMessage {
 pub async fn call_llm_api(prompt: &str) -> Result<String> {
     let api_key = env::var("DEEPSEEK_API_KEY")
         .context("Error: DEEPSEEK_API_KEY environment variable not set.")?;
-    let client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let request_body = RequestBody {
         stream: false,

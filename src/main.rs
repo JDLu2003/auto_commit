@@ -123,7 +123,7 @@ async fn main() -> Result<()> {
             }
             3 => {
                 println!("{}", "❌ 操作已取消，未提交任何变更".red());
-                return Ok(())
+                return Ok(());
             }
             _ => unreachable!(),
         }
@@ -136,7 +136,7 @@ fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
             "{}",
             "Dry run: Commit message generated but not committed.".yellow()
         );
-        return Ok(())
+        return Ok(());
     }
 
     let mut file = NamedTempFile::new()?;
@@ -159,7 +159,7 @@ fn commit(_repo: &Repository, message: &str, dry_run: bool) -> Result<()> {
                 .and_then(|s| s.split_whitespace().last())
             {
                 println!("✅ Commit 已提交: {}", hash.green());
-                return Ok(())
+                return Ok(());
             }
         }
         // Fallback for unexpected output
