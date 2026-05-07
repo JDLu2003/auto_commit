@@ -64,9 +64,10 @@ async fn main() -> Result<()> {
 
     println!("{}", "正在分析已暂存的变更...".yellow());
 
+    let project_context = read_project_context();
     let strategy = prompt_mode.get_strategy();
     let current_prompt = args.prompt.clone();
-    let mut conversation = strategy.build_messages(&diff, &current_prompt);
+    let mut conversation = strategy.build_messages(&diff, &current_prompt, &project_context);
 
     let t1 = Instant::now();
     let (mut commit_msg, raw_response) =
@@ -270,4 +271,14 @@ fn get_staged_diff(repo: &Repository) -> Result<String> {
     } else {
         Ok(diff_text)
     }
+}
+
+/// Read project context from AGENTS.md or CLAUDE.md if present.
+fn read_project_context() -> Option<String> {
+    for name in &["AGENTS.md", "CLAUDE.md"] {
+        if let Ok(content) = std::fs::read_to_string(name) {
+            return Some(content);
+        }
+    }
+    None
 }

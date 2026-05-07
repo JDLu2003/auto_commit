@@ -35,3 +35,13 @@ No test suite exists. No CI config.
 - Error handling: `anyhow` throughout
 - CLI args: `clap` derive mode
 - Async: `tokio` runtime (`#[tokio::main]`)
+
+## Commit Checklist
+
+每次提交前必须通过以下检查（零警告）：
+
+```bash
+cargo fmt
+cargo check
+cargo clippy
+```
